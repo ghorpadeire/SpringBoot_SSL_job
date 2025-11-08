@@ -27,7 +27,7 @@ A simple web application for performing remote SSL/TLS assessment of HTTPS serve
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone 
 cd SpringBoot_SSL_job
 ```
 
