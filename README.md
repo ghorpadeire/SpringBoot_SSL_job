@@ -2,6 +2,11 @@
 
 A simple web application for performing remote SSL/TLS assessment of HTTPS servers.
 
+## Branch Structure
+
+- **first-code**: Primary branch containing the full application code migrated from the previous main branch.
+- **work**: Current working branch used for ongoing updates in this repository snapshot.
+
 ## Features
 
 - **Hostname Assessment**: Enter a hostname to assess its SSL/TLS configuration
