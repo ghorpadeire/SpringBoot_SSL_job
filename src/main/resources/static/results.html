@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSL/TLS Assessment Results</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-size: 16px;
+            transition: opacity 0.3s;
+        }
+
+        .back-link:hover {
+            opacity: 0.8;
+        }
+
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            word-break: break-all;
+        }
+
+        .result-section {
+            margin-bottom: 25px;
+        }
+
+        .result-label {
+            font-weight: bold;
+            color: #555;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .result-value {
+            font-size: 18px;
+            color: #333;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-valid {
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .status-invalid {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .status-in-progress {
+            color: #f39c12;
+            font-weight: bold;
+        }
+
+        .error-box {
+            background: #fee;
+            border: 1px solid #e74c3c;
+            border-radius: 5px;
+            padding: 15px;
+            color: #c0392b;
+            margin: 20px 0;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        button {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        .delete-btn {
+            background: #e74c3c;
+        }
+
+        .delete-btn:hover {
+            background: #c0392b;
+        }
+
+        .actions {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .timestamp {
+            color: #999;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Home</a>
+        <h1>SSL/TLS Assessment Results</h1>
+
+        <div class="card">
+            <div id="resultsContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading assessment results...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get hostname from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const hostname = urlParams.get('hostname');
+
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!hostname) {
+                showError('No hostname specified');
+                return;
+            }
+            loadResults();
+        });
+
+        async function loadResults() {
+            try {
+                const response = await fetch(`/api/assessment/${encodeURIComponent(hostname)}`);
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        showError('Assessment not found for this hostname. Please run a new assessment.');
+                    } else {
+                        showError('Failed to load assessment results');
+                    }
+                    return;
+                }
+
+                const assessment = await response.json();
+                displayResults(assessment);
+            } catch (error) {
+                showError('Error loading results: ' + error.message);
+            }
+        }
+
+        function displayResults(assessment) {
+            const content = document.getElementById('resultsContent');
+
+            let html = `<h2>${escapeHtml(assessment.hostname)}</h2>`;
+
+            if (assessment.inProgress) {
+                html += `
+                    <div class="result-section">
+                        <div class="result-label">Status</div>
+                        <div class="result-value status-in-progress">
+                            Assessment in progress... Please refresh the page.
+                        </div>
+                    </div>
+                `;
+            } else if (assessment.errorMessage) {
+                html += `
+                    <div class="error-box">
+                        <strong>Error:</strong> ${escapeHtml(assessment.errorMessage)}
+                    </div>
+                `;
+            } else {
+                // Certificate Status
+                const certStatus = assessment.certificateValid ? 'Valid' : 'Invalid';
+                const certClass = assessment.certificateValid ? 'status-valid' : 'status-invalid';
+                const certDetails = assessment.certificateValid
+                    ? 'Certificate is valid for this hostname'
+                    : (assessment.certificateError || 'Certificate validation failed');
+
+                html += `
+                    <div class="result-section">
+                        <div class="result-label">Certificate Status</div>
+                        <div class="result-value">
+                            <span class="${certClass}">${certStatus}</span>
+                            <br>
+                            <small style="color: #666;">${escapeHtml(certDetails)}</small>
+                        </div>
+                    </div>
+
+                    <div class="result-section">
+                        <div class="result-label">Negotiated Protocol</div>
+                        <div class="result-value">
+                            ${escapeHtml(assessment.protocol || 'N/A')}
+                        </div>
+                    </div>
+
+                    <div class="result-section">
+                        <div class="result-label">Negotiated Cipher Suite</div>
+                        <div class="result-value">
+                            ${escapeHtml(assessment.cipherSuite || 'N/A')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (assessment.assessmentTime) {
+                const date = new Date(assessment.assessmentTime);
+                html += `
+                    <div class="timestamp">
+                        Assessed on: ${date.toLocaleString()}
+                    </div>
+                `;
+            }
+
+            html += `
+                <div class="actions">
+                    <button onclick="reassess()">Re-assess</button>
+                    <button class="delete-btn" onclick="deleteAndGoBack()">Clear Cache</button>
+                </div>
+            `;
+
+            content.innerHTML = html;
+        }
+
+        async function reassess() {
+            if (!confirm('This will delete the current assessment and perform a new one. Continue?')) {
+                return;
+            }
+
+            // Delete current assessment
+            await fetch(`/api/assessment/${encodeURIComponent(hostname)}`, {
+                method: 'DELETE'
+            });
+
+            // Perform new assessment
+            const response = await fetch('/api/assess', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ hostname: hostname })
+            });
+
+            if (response.ok) {
+                // Reload results
+                loadResults();
+            } else {
+                alert('Failed to perform new assessment');
+            }
+        }
+
+        async function deleteAndGoBack() {
+            if (!confirm('Are you sure you want to delete this assessment?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/assessment/${encodeURIComponent(hostname)}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    alert('Failed to delete assessment');
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function showError(message) {
+            const content = document.getElementById('resultsContent');
+            content.innerHTML = `
+                <div class="error-box">
+                    ${escapeHtml(message)}
+                </div>
+                <div class="actions">
+                    <button onclick="window.location.href='/'">Go to Home</button>
+                </div>
+            `;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
