@@ -10,15 +10,15 @@
 <h1>SSL/TLS Assessment</h1>
 <p>Enter a hostname. The server connects on port 443 and shows a simple result.</p>
 
-<!-- Hostname input form: maps to /assess -->
+<!-- Hostname input form: hits /assess and shows the HTML result page -->
 <form action="/assess" method="get">
     <label for="hostname">Hostname:</label>
     <input
-        id="hostname"
-        type="text"
-        name="hostname"
-        placeholder="example.com (hostname only, no http, no port)"
-        required
+            id="hostname"
+            type="text"
+            name="hostname"
+            placeholder="example.com (hostname only, no http, no port)"
+            required
     >
     <button type="submit">Run Assessment</button>
 </form>
@@ -28,53 +28,157 @@
 
 <!-- Recent assessments controls -->
 <h2>Recent assessments</h2>
-<p>Last 10 assessed hostnames.</p>
+<p>Last 10 assessed hostnames. Newest first.</p>
 
-<form action="/assessments/refresh" method="get" style="display:inline;">
-    <button type="submit">Refresh</button>
-</form>
+<!-- Simple refresh: just reload the page, no controller needed -->
+<button type="button" onclick="location.reload()">Refresh</button>
 
+<!-- Clear all results (POST to /assessments/clear) -->
 <form action="/assessments/clear" method="post" style="display:inline;">
     <button type="submit">Clear All</button>
 </form>
 
-<!-- Recent assessments table -->
-<table border="1" cellpadding="4" cellspacing="0">
-    <thead>
-        <tr>
-            <th>Hostname</th>
-            <th>Certificate</th>
-            <th>Protocol</th>
-            <th>Cipher Suite</th>
-            <th>Last Checked</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        <!-- Example static row. Replace with server-side rendered rows. -->
-        <tr>
-            <td><a href="/results?hostname=example.com">example.com</a></td>
-            <td>Valid</td>
-            <td>TLS 1.3</td>
-            <td>TLS_AES_128_GCM_SHA256</td>
-            <td>2025-11-09 12:00</td>
-            <td>
-                <form action="/assessments/delete" method="post">
-                    <input type="hidden" name="hostname" value="example.com">
-                    <button type="submit">Delete</button>
-                </form>
-            </td>
-        </tr>
+<!-- Optional link to raw text endpoint for debugging -->
+<a href="/recent" style="margin-left:8px;">Open /recent (raw text)</a>
 
-        <!-- Placeholder row when no data.
-             In real use, generate rows on server side (Thymeleaf, JSP, etc). -->
-        <tr>
-            <td colspan="6">
-                Replace this with dynamic rows rendered on the server.
-            </td>
-        </tr>
+<!-- Recent assessments table. We fill tbody via JS by calling /recent -->
+<table border="1" cellpadding="4" cellspacing="0" style="margin-top:10px;">
+    <thead>
+    <tr>
+        <th>Hostname</th>
+        <th>Certificate</th>
+        <th>Protocol</th>
+        <th>Cipher Suite</th>
+        <th>Last Checked</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody id="recent-body">
+    <!-- Placeholder row while JS loads data -->
+    <tr id="recent-empty"><td colspan="6">Loading...</td></tr>
     </tbody>
 </table>
+
+<!-- Delete one host quickly using a small form -->
+<form action="/assessments/delete" method="post" style="margin-top:12px;">
+    <label for="delHost">Delete one hostname:</label>
+    <input id="delHost" type="text" name="hostname" placeholder="example.com" required>
+    <button type="submit">Delete</button>
+</form>
+
+<noscript>
+    <p><strong>Note:</strong> Enable JavaScript to see the table fill automatically.
+        You can still open <a href="/recent">/recent</a> to view plain text.</p>
+</noscript>
+
+<script>
+    // Fetch "/recent" which returns plain text like:
+    // Recent (newest first):
+    // example.com | valid | TLSv1.3 | TLS_AES_256_GCM_SHA384 | 2025-11-12T12:34:56Z
+    // We parse each non empty line after the header and build table rows.
+
+    async function loadRecent() {
+        const tbody = document.getElementById('recent-body');
+        const emptyRow = document.getElementById('recent-empty');
+
+        try {
+            const res = await fetch('/recent', { cache: 'no-store' });
+            const text = await res.text();
+
+            // Split into lines and drop the header line
+            const lines = text.split('\n').map(s => s.trim());
+            const dataLines = lines.filter((line, idx) =>
+                line.length > 0 && !(idx === 0 && line.toLowerCase().startsWith('recent'))
+            );
+
+            // Remove placeholder
+            if (emptyRow) emptyRow.remove();
+
+            if (dataLines.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 6;
+                td.textContent = '(empty)';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
+            for (const line of dataLines) {
+                // Expected format with 5 parts separated by " | "
+                // [0] host, [1] valid or invalid, [2] protocol, [3] cipher, [4] timestamp
+                const parts = line.split(' | ');
+                if (parts.length < 5) continue; // skip unexpected lines
+
+                const host = parts[0] || '';
+                const cert = parts[1] || '';
+                const proto = parts[2] || '';
+                const cipher = parts[3] || '';
+                const ts = parts[4] || '';
+
+                const tr = document.createElement('tr');
+
+                // Hostname with link to /results
+                const tdHost = document.createElement('td');
+                const a = document.createElement('a');
+                a.href = '/results?hostname=' + encodeURIComponent(host);
+                a.textContent = host;
+                tdHost.appendChild(a);
+
+                const tdCert = document.createElement('td');
+                tdCert.textContent = cert;
+
+                const tdProto = document.createElement('td');
+                tdProto.textContent = proto;
+
+                const tdCipher = document.createElement('td');
+                tdCipher.textContent = cipher;
+
+                const tdTs = document.createElement('td');
+                tdTs.textContent = ts;
+
+                // Actions: small form that posts to /assessments/delete
+                const tdAct = document.createElement('td');
+                const form = document.createElement('form');
+                form.action = '/assessments/delete';
+                form.method = 'post';
+                form.style.display = 'inline';
+
+                const hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'hostname';
+                hidden.value = host;
+
+                const btn = document.createElement('button');
+                btn.type = 'submit';
+                btn.textContent = 'Delete';
+
+                form.appendChild(hidden);
+                form.appendChild(btn);
+                tdAct.appendChild(form);
+
+                tr.appendChild(tdHost);
+                tr.appendChild(tdCert);
+                tr.appendChild(tdProto);
+                tr.appendChild(tdCipher);
+                tr.appendChild(tdTs);
+                tr.appendChild(tdAct);
+
+                tbody.appendChild(tr);
+            }
+        } catch (e) {
+            if (emptyRow) emptyRow.remove();
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 6;
+            td.textContent = 'Could not load /recent. You can open /recent directly to debug.';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+        }
+    }
+
+    loadRecent();
+</script>
 
 </body>
 </html>
